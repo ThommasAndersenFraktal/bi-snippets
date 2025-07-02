@@ -1,3 +1,12 @@
+/*
+########################################bi-snippets########################################
+This query defines a CTE (products) with sample customer-product subscriptions—each row 
+an interval that may overlap others. It then uses window functions to assign each contiguous 
+block of time a group ID and finally aggregates those groups into complete, non-overlapping
+intervals per customer.
+###########################################################################################
+*/
+
 with products as (
     select
         cast(customer_id    as int)     as customer_id,
