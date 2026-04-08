@@ -1,7 +1,7 @@
 CREATE OR ALTER FUNCTION fraktal.fn_GenerateDateTable
 (
-    @start_date DATE,   -- Startdato (inklusive)
-    @end_date   DATE    -- Sluttdato (inklusive)
+    @start_date DATE, 
+    @end_date   DATE
 )
 RETURNS @result TABLE
 (
@@ -49,7 +49,7 @@ BEGIN
     DECLARE @i_dag DATE = CONVERT(DATE, SYSDATETIME());
 
     WITH cte_dato_liste AS (
-        -- Generate a contiguous list of dates from @start_date to @end_date (inclusive)
+        -- Generate a contiguous list of dates from @start_date to @end_date
         SELECT CAST(@start_date AS DATE) AS dato_verdi
         UNION ALL
         SELECT DATEADD(DAY, 1, dato_verdi)
@@ -57,7 +57,7 @@ BEGIN
         WHERE dato_verdi < @end_date
     ),
 
-    -- Month names
+    -- Custom month names
     måned_navn AS (
         select
             *
@@ -78,7 +78,7 @@ BEGIN
         ) as t(måned_nummer, måned_navn_kort, måned_navn_lang)
     ),
 
-    -- Weekday names
+    -- Custom weekday names
     ukedag_navn AS (
         select
             *
@@ -94,8 +94,7 @@ BEGIN
         ) as t(ukedag_nummer, ukedag_navn_kort, ukedag_navn_lang)
     ),
 
-    cte_grunnlag AS (
-        -- Compute all raw date parts and labels (no casing fixes here)
+    grunnlag AS (
         SELECT
             dl.dato_verdi                                                      AS dato,
             DATEFROMPARTS(YEAR(dl.dato_verdi), MONTH(dl.dato_verdi), 1)        AS første_dato_i_måned,
@@ -103,7 +102,7 @@ BEGIN
             DATETRUNC(WEEK, dl.dato_verdi)                                     AS første_dato_i_uke,
             DATEADD(DAY, 6, DATETRUNC(WEEK, dl.dato_verdi))                    AS siste_dato_i_uke,
 
-            ((DATEPART(weekday,dl.dato_verdi)+@@DATEFIRST-2)%7)+1                    AS ukedag,
+            ((DATEPART(weekday,dl.dato_verdi)+@@DATEFIRST-2)%7)+1              AS ukedag,
             DATEPART(ISO_WEEK, dl.dato_verdi)                                  AS uke,
             DATEPART(QUARTER,  dl.dato_verdi)                                  AS kvartal,
             DATEPART(MONTH,    dl.dato_verdi)                                  AS måned,
@@ -116,7 +115,6 @@ BEGIN
             DATEPART(DAYOFYEAR, dl.dato_verdi)                                 AS dag_i_år,
             DATEPART(WEEKDAY,   dl.dato_verdi)                                 AS dag_i_uke,
             DATEPART(DAY,       dl.dato_verdi)                                 AS dag_i_måned,
-
             u.ukedag_navn_lang                                                 AS ukedag_navn,
             u.ukedag_navn_kort                                                 AS ukedag_navn_kort,
             m.måned_navn_lang                                                  AS måned_navn,
@@ -125,7 +123,8 @@ BEGIN
             CONCAT(m.måned_navn_kort,' ',DATEPART(YEAR,dl.dato_verdi) )        AS måned_år_navn_kort,
             CONCAT('U', RIGHT('0' + CAST(DATEPART(ISO_WEEK, dl.dato_verdi) AS VARCHAR(2)), 2),
                    ' ', CAST(DATEPART(YEAR, DATEADD(DAY, 26 - DATEPART(ISO_WEEK, dl.dato_verdi), dl.dato_verdi)) AS CHAR(4))) AS uke_år_navn,
-            CONCAT('K', DATEPART(QUARTER, dl.dato_verdi), ' ', DATEPART(YEAR, dl.dato_verdi)) AS kvartal_år_navn,
+            CONCAT('K', DATEPART(QUARTER, dl.dato_verdi), ' ', DATEPART(YEAR, dl.dato_verdi)) 
+                                                                               AS kvartal_år_navn,
 
             IIF(dl.dato_verdi <= @i_dag, 1, 0)                                 AS er_frem_til_i_dag,
             IIF(dl.dato_verdi  <  @i_dag, 1, 0)                                AS er_før_i_dag,
@@ -187,14 +186,12 @@ BEGIN
 
     ),
 
-    -- Which years do we need for Holiday calc?
     årstall_helligdager AS (
         SELECT DISTINCT
             YEAR(dato) AS år
-        FROM cte_grunnlag
+        FROM grunnlag
     ),
       
-    -- Easter “computus” in 3 steps, then date
     påske_trinn1 AS (
         SELECT
             år,
@@ -210,6 +207,7 @@ BEGIN
            )/3.0)                      AS g
         FROM årstall_helligdager
     ),
+
     påske_trinn2 AS (
         SELECT
             år,
@@ -220,6 +218,7 @@ BEGIN
             (19*a + b - d - g + 15) % 30 AS h
         FROM påske_trinn1
     ),
+
     påske_trinn3 AS (
         SELECT
             år,
@@ -231,6 +230,7 @@ BEGIN
             FLOOR((a + 11*h + 22 * ((32+2*e+2*i-h-k)%7)) / 451.0) AS m
         FROM påske_trinn2
     ),
+
     påske_datoer AS (
         SELECT
             år,
@@ -269,7 +269,6 @@ BEGIN
         ) AS t(helligdag_navn, måned, dag, forskyvning_dager)
     ),
 
-    -- Build actual holiday dates
     helligdager AS (
         SELECT
             CASE
@@ -283,8 +282,7 @@ BEGIN
             ON ed.år = hy.år
     ),
 
-    cte_korrigert AS (
-        -- Join holidays
+    korrigert AS (
         SELECT
             dato,
             første_dato_i_måned,
@@ -324,11 +322,11 @@ BEGIN
             måned_dynamisk,
             år_dynamisk,
             perioder_år_tidligere
-        FROM cte_grunnlag AS d
+        FROM grunnlag AS d
         LEFT JOIN (
             SELECT
                 IIF(min(helligdag_navn) <> max(helligdag_navn), CONCAT_WS(' - ',min(helligdag_navn),max(helligdag_navn)), min(helligdag_navn)) 
-                AS helligdag_navn,
+                AS helligdag_navn, --avoid duplicates for occasions appearing on the same date
                 helligdag_dato
             FROM helligdager GROUP BY helligdag_dato
         ) AS helligdager
@@ -373,10 +371,11 @@ BEGIN
         måned_dynamisk,
         år_dynamisk,
         perioder_år_tidligere
-    FROM cte_korrigert
+    FROM korrigert
     OPTION (MAXRECURSION 0);
 
     RETURN;
 END
 
 GO
+
