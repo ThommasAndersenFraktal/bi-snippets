@@ -1,4 +1,4 @@
-CREATE OR ALTER FUNCTION fraktal.fn_GenerateDateTable
+CREATE OR ALTER FUNCTION dbo.fn_GenerateDateTable
 (
     @start_date DATE, 
     @end_date   DATE
